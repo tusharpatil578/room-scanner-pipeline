@@ -1,0 +1,71 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "room-scanner-pipeline"
+version = "0.1.0"
+description = "3D room scanning pipeline with LiDAR, video, and photo processing for floor plan generation"
+authors = [{name = "Tushar Patil", email = "tusharpatil578@example.com"}]
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+
+[project.dependencies]
+numpy = ">=2.0.0"
+scipy = ">=1.14.0"
+scikit-learn = ">=1.5.0"
+scikit-image = ">=0.24.0"
+opencv-python-headless = ">=4.9.0"
+pandas = ">=2.2.0"
+pillow = ">=10.1.0"
+matplotlib = ">=3.9.0"
+tqdm = ">=4.66.0"
+pyyaml = ">=6.0"
+pydantic = ">=2.5.0"
+imageio = ">=2.34.0"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.1.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tusharpatil578/room-scanner-pipeline"
+Repository = "https://github.com/tusharpatil578/room-scanner-pipeline"
+Documentation = "https://room-scanner-pipeline.readthedocs.io"
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v"
+
+[tool.flake8]
+max-line-length = 100
+exclude = [".git", "__pycache__", "docs", ".venv", "build", "dist"]
+ignore = ["E203", "W503"]

@@ -1,185 +1,184 @@
-"""Detect damage regions in point clouds."""
-
+"""Damage detection from point clouds."""
 import numpy as np
-from dataclasses import dataclass
-from typing import List, Dict
 from enum import Enum
 
 
 class DamageClass(Enum):
     """Damage classification."""
-    NONE = "NONE"
-    COSMETIC = "COSMETIC"
-    STRUCTURAL = "STRUCTURAL"
-    CONCEALED = "CONCEALED"
+    NONE = 0
+    COSMETIC = 1
+    STRUCTURAL = 2
+    CONCEALED = 3
 
 
-@dataclass
 class DamageDetector:
-    """Detect and classify damage."""
+    """Detect damage in surfaces."""
     
-    @staticmethod
-    def compute_normals(point_cloud: np.ndarray, k: int = 10) -> np.ndarray:
-        """
-        Compute point normals using PCA.
+    def __init__(self, normal_threshold=0.3, cluster_size_min=50):
+        """Initialize detector.
         
         Args:
-            point_cloud: (N, 3) point cloud
-            k: Number of neighbors for PCA
-        
-        Returns:
-            (N, 3) normal vectors
+            normal_threshold: Threshold for normal discontinuities
+            cluster_size_min: Minimum cluster size for damage region
         """
-        from scipy.spatial import cKDTree
+        self.normal_threshold = normal_threshold
+        self.cluster_size_min = cluster_size_min
+    
+    def compute_normals(self, point_cloud, k=10):
+        """Compute surface normals using PCA.
         
-        tree = cKDTree(point_cloud)
-        _, indices = tree.query(point_cloud, k=k+1)
-        
+        Args:
+            point_cloud: N x 3 array
+            k: Number of neighbors for PCA
+            
+        Returns:
+            N x 3 array of normals
+        """
         normals = np.zeros_like(point_cloud)
         
-        for i, neighbor_indices in enumerate(indices):
-            neighbors = point_cloud[neighbor_indices]
+        if len(point_cloud) < k:
+            return normals
+        
+        # Simple normal computation
+        for i in range(len(point_cloud)):
+            # Find k nearest neighbors
+            dists = np.linalg.norm(point_cloud - point_cloud[i], axis=1)
+            neighbors_idx = np.argsort(dists)[:k+1]
+            neighbors = point_cloud[neighbors_idx]
             
-            # Center
-            centered = neighbors - np.mean(neighbors, axis=0)
+            # PCA
+            cov = np.cov(neighbors.T)
+            eigenvalues, eigenvectors = np.linalg.eig(cov)
+            normal = eigenvectors[:, np.argmin(eigenvalues)]
             
-            # SVD
-            U, S, Vt = np.linalg.svd(centered)
-            normal = Vt[-1]  # Smallest singular vector
-            
-            normals[i] = normal / np.linalg.norm(normal)
+            normals[i] = normal / (np.linalg.norm(normal) + 1e-6)
         
         return normals
     
-    @staticmethod
-    def detect_normal_discontinuities(normals: np.ndarray, threshold: float = 0.3) -> np.ndarray:
-        """
-        Detect normal discontinuities (surface changes).
+    def detect_normal_discontinuities(self, normals, threshold=None):
+        """Detect discontinuities in surface normals.
         
         Args:
-            normals: (N, 3) normals
-            threshold: Threshold for discontinuity
-        
+            normals: N x 3 array
+            threshold: Discontinuity threshold
+            
         Returns:
-            (N,) binary mask of discontinuities
+            Boolean mask of discontinuities
         """
-        # Compute angle differences to neighbors
+        if threshold is None:
+            threshold = self.normal_threshold
+        
+        # Compute normal differences
         discontinuities = np.zeros(len(normals), dtype=bool)
         
-        from scipy.spatial import cKDTree
-        tree = cKDTree(normals)
-        _, indices = tree.query(normals, k=5)
-        
-        for i, neighbor_indices in enumerate(indices):
-            angles = np.abs(np.dot(normals[neighbor_indices], normals[i]))
-            if np.min(angles) < threshold:
+        for i in range(1, len(normals)):
+            dot_prod = np.abs(np.dot(normals[i], normals[i-1]))
+            if dot_prod < (1 - threshold):
                 discontinuities[i] = True
         
         return discontinuities
     
-    @staticmethod
-    def region_growing(discontinuities: np.ndarray, point_cloud: np.ndarray, 
-                      distance_threshold: float = 0.1) -> List[np.ndarray]:
-        """
-        Group discontinuities into regions.
+    def region_growing(self, point_cloud, discontinuities):
+        """Grow regions from discontinuity points.
         
         Args:
-            discontinuities: (N,) binary mask
-            point_cloud: (N, 3) point cloud
-            distance_threshold: Grouping threshold
-        
-        Returns:
-            List of damage regions
-        """
-        damage_indices = np.where(discontinuities)[0]
-        
-        if len(damage_indices) == 0:
-            return []
-        
-        regions = []
-        remaining = set(damage_indices)
-        
-        while remaining:
-            seed = list(remaining)[0]
-            region = {seed}
-            queue = [seed]
+            point_cloud: N x 3 array
+            discontinuities: Boolean mask
             
+        Returns:
+            List of damage region indices
+        """
+        damage_regions = []
+        visited = np.zeros(len(point_cloud), dtype=bool)
+        
+        for i in np.where(discontinuities)[0]:
+            if visited[i]:
+                continue
+            
+            region = [i]
+            visited[i] = True
+            queue = [i]
+            
+            # BFS
             while queue:
                 current = queue.pop(0)
                 
-                # Find neighbors within distance
-                for idx in list(remaining - region):
-                    if np.linalg.norm(point_cloud[current] - point_cloud[idx]) < distance_threshold:
-                        region.add(idx)
-                        queue.append(idx)
+                # Find nearby discontinuity points
+                dists = np.linalg.norm(point_cloud - point_cloud[current], axis=1)
+                neighbors = np.where((dists < 0.1) & discontinuities & ~visited)[0]
+                
+                for neighbor in neighbors:
+                    if not visited[neighbor]:
+                        region.append(neighbor)
+                        visited[neighbor] = True
+                        queue.append(neighbor)
             
-            regions.append(np.array(list(region)))
-            remaining -= region
+            if len(region) >= self.cluster_size_min:
+                damage_regions.append(region)
         
-        return regions
+        return damage_regions
     
-    @staticmethod
-    def classify_damage(region_points: np.ndarray, normals: np.ndarray) -> DamageClass:
-        """
-        Classify damage type.
+    def classify_damage(self, damage_regions, point_cloud):
+        """Classify damage severity.
         
         Args:
-            region_points: Point cloud region
-            normals: Normal vectors for region
-        
-        Returns:
-            Damage classification
-        """
-        if len(region_points) < 10:
-            return DamageClass.COSMETIC
-        
-        # Compute normal variance (smoothness)
-        normal_std = np.std(normals, axis=0)
-        smoothness = np.mean(normal_std)
-        
-        # Compute size
-        size = np.linalg.norm(np.max(region_points, axis=0) - np.min(region_points, axis=0))
-        
-        if smoothness > 0.5:
-            return DamageClass.STRUCTURAL
-        elif size > 0.5:
-            return DamageClass.COSMETIC
-        else:
-            return DamageClass.CONCEALED
-    
-    @staticmethod
-    def detect_damage(point_cloud: np.ndarray) -> List[Dict]:
-        """
-        Full damage detection pipeline.
-        
-        Args:
-            point_cloud: (N, 3) point cloud
-        
-        Returns:
-            List of damage regions with classifications
-        """
-        # Compute normals
-        normals = DamageDetector.compute_normals(point_cloud)
-        
-        # Detect discontinuities
-        discontinuities = DamageDetector.detect_normal_discontinuities(normals)
-        
-        # Region growing
-        regions = DamageDetector.region_growing(discontinuities, point_cloud)
-        
-        # Classify
-        damages = []
-        for region_indices in regions:
-            region_points = point_cloud[region_indices]
-            region_normals = normals[region_indices]
+            damage_regions: List of region indices
+            point_cloud: Point cloud
             
-            damage_class = DamageDetector.classify_damage(region_points, region_normals)
+        Returns:
+            List of (region, classification) tuples
+        """
+        classifications = []
+        
+        for region in damage_regions:
+            region_points = point_cloud[region]
             
-            damages.append({
+            # Simple heuristic: based on cluster size and spread
+            cluster_spread = np.max(np.linalg.norm(
+                region_points - np.mean(region_points, axis=0),
+                axis=1
+            ))
+            
+            if len(region) < 100 or cluster_spread < 0.05:
+                damage_class = DamageClass.COSMETIC
+            elif cluster_spread > 0.2:
+                damage_class = DamageClass.STRUCTURAL
+            else:
+                damage_class = DamageClass.CONCEALED
+            
+            classifications.append({
+                'region': region,
                 'class': damage_class,
-                'num_points': len(region_indices),
-                'centroid': np.mean(region_points, axis=0),
-                'size': np.linalg.norm(np.max(region_points, axis=0) - np.min(region_points, axis=0)),
+                'severity': damage_class.value,
+                'cluster_size': len(region),
+                'spread': cluster_spread
             })
         
-        return damages
+        return classifications
+    
+    def detect_damage(self, point_cloud):
+        """Detect all damage.
+        
+        Args:
+            point_cloud: N x 3 array
+            
+        Returns:
+            List of damage detections with classifications
+        """
+        # Compute normals
+        normals = self.compute_normals(point_cloud)
+        
+        # Detect discontinuities
+        discontinuities = self.detect_normal_discontinuities(normals)
+        
+        # Region growing
+        damage_regions = self.region_growing(point_cloud, discontinuities)
+        
+        # Classify
+        classifications = self.classify_damage(damage_regions, point_cloud)
+        
+        return {
+            'num_damage_regions': len(classifications),
+            'damage_detections': classifications,
+            'discontinuity_count': np.sum(discontinuities)
+        }

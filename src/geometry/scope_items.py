@@ -1,98 +1,98 @@
-"""Generate repair scope line items from damage."""
-
+"""Generate scope of work items."""
 import numpy as np
-from dataclasses import dataclass
-from typing import List, Dict
 from src.geometry.damage_detection import DamageClass
 
 
-@dataclass
 class ScopeItemGenerator:
-    """Generate repair scope line items."""
+    """Generate scope items from measurements and damage."""
     
-    MATERIAL_COSTS = {
-        DamageClass.COSMETIC: 5.0,
-        DamageClass.STRUCTURAL: 50.0,
-        DamageClass.CONCEALED: 100.0,
+    # Cost estimates (USD per unit)
+    COST_ESTIMATES = {
+        'drywall_repair': 50,  # per sq ft
+        'paint': 15,  # per sq ft
+        'floor_repair': 75,  # per sq ft
+        'ceiling_repair': 60,  # per sq ft
+        'trim_replacement': 20,  # per linear ft
+        'opening_repair': 200,  # per opening
     }
     
-    LABOR_HOURS = {
-        DamageClass.COSMETIC: 0.5,
-        DamageClass.STRUCTURAL: 4.0,
-        DamageClass.CONCEALED: 8.0,
-    }
-    
-    @staticmethod
-    def generate_scope_item(damage: Dict) -> Dict:
-        """
-        Generate a repair scope line item from damage.
+    def generate_scope_item(self, item_type, quantity, unit):
+        """Generate a single scope item.
         
         Args:
-            damage: Damage dict with classification
-        
+            item_type: Type of work (drywall_repair, paint, etc.)
+            quantity: Quantity of work
+            unit: Unit (sq ft, linear ft, count, etc.)
+            
         Returns:
-            Scope line item
+            Scope item dict
         """
-        damage_class = damage['class']
-        size = damage['size']
+        cost_per_unit = self.COST_ESTIMATES.get(item_type, 100)
+        total_cost = quantity * cost_per_unit
         
-        # Estimate quantity
-        quantity = max(1, int(np.ceil(size / 0.5)))
-        
-        # Get base costs
-        material_cost = ScopeItemGenerator.MATERIAL_COSTS.get(damage_class, 0)
-        labor_hours = ScopeItemGenerator.LABOR_HOURS.get(damage_class, 0)
-        
-        # Scale by size
-        material_cost *= quantity
-        labor_hours *= quantity
-        
-        labor_cost = labor_hours * 75.0  # $75/hour
-        
-        scope_item = {
-            'description': f"{damage_class.value} damage - {quantity} units",
+        return {
+            'type': item_type,
             'quantity': quantity,
-            'unit': 'area',
-            'material_cost': float(material_cost),
-            'labor_hours': float(labor_hours),
-            'labor_cost': float(labor_cost),
-            'total_cost': float(material_cost + labor_cost),
-            'damage_class': damage_class.value,
+            'unit': unit,
+            'cost_per_unit': cost_per_unit,
+            'total_cost': total_cost
         }
-        
-        return scope_item
     
-    @staticmethod
-    def generate_scope(damages: List[Dict]) -> Dict:
-        """
-        Generate complete scope of work.
+    def generate_scope(self, measurements, damage_detections):
+        """Generate complete scope of work.
         
         Args:
-            damages: List of damage dicts
-        
+            measurements: Measurements dict from MeasurementExtractor
+            damage_detections: Damage dict from DamageDetector
+            
         Returns:
-            Scope dict with line items and totals
+            Scope of work dict
         """
         scope_items = []
         
-        for damage in damages:
-            item = ScopeItemGenerator.generate_scope_item(damage)
-            scope_items.append(item)
+        # Base items from measurements
+        wall_length = measurements.get('wall_length', 0)
+        room_area = measurements.get('room_area', 0)
         
-        # Compute totals
-        total_material = sum(item['material_cost'] for item in scope_items)
-        total_labor_cost = sum(item['labor_cost'] for item in scope_items)
-        total_labor_hours = sum(item['labor_hours'] for item in scope_items)
+        # Wall repair if damage detected
+        structural_damage_count = sum(
+            1 for d in damage_detections.get('damage_detections', [])
+            if d['class'] == DamageClass.STRUCTURAL
+        )
         
-        scope = {
-            'line_items': scope_items,
-            'summary': {
-                'total_items': len(scope_items),
-                'total_material_cost': float(total_material),
-                'total_labor_hours': float(total_labor_hours),
-                'total_labor_cost': float(total_labor_cost),
-                'total_cost': float(total_material + total_labor_cost),
-            }
+        if structural_damage_count > 0:
+            # Estimate affected area
+            affected_area = structural_damage_count * 0.5  # ~0.5 sq ft per damage
+            scope_items.append(self.generate_scope_item(
+                'drywall_repair', affected_area, 'sq ft'
+            ))
+        
+        # Paint (assuming room needs painting)
+        # Convert m2 to sq ft (1 m2 = 10.764 sq ft)
+        if room_area > 0:
+            room_area_sqft = room_area * 10.764
+            scope_items.append(self.generate_scope_item(
+                'paint', room_area_sqft, 'sq ft'
+            ))
+        
+        # Opening repairs
+        num_openings = len(damage_detections.get('damage_detections', []))
+        if num_openings > 0:
+            scope_items.append(self.generate_scope_item(
+                'opening_repair', num_openings, 'count'
+            ))
+        
+        # Trim replacement if walls damaged
+        if wall_length > 0 and structural_damage_count > 0:
+            scope_items.append(self.generate_scope_item(
+                'trim_replacement', wall_length, 'linear ft'
+            ))
+        
+        # Compute total
+        total_cost = sum(item['total_cost'] for item in scope_items)
+        
+        return {
+            'scope_items': scope_items,
+            'total_cost': total_cost,
+            'item_count': len(scope_items)
         }
-        
-        return scope

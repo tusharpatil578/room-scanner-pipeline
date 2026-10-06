@@ -34,7 +34,7 @@ class DamageDetector:
         Returns:
             N x 3 array of normals
         """
-        normals = np.zeros_like(point_cloud)
+        normals = np.zeros_like(point_cloud, dtype=np.float64)
         
         if len(point_cloud) < k:
             return normals
@@ -46,12 +46,18 @@ class DamageDetector:
             neighbors_idx = np.argsort(dists)[:k+1]
             neighbors = point_cloud[neighbors_idx]
             
-            # PCA
-            cov = np.cov(neighbors.T)
-            eigenvalues, eigenvectors = np.linalg.eig(cov)
-            normal = eigenvectors[:, np.argmin(eigenvalues)]
+            # Center points
+            centered = neighbors - np.mean(neighbors, axis=0)
             
-            normals[i] = normal / (np.linalg.norm(normal) + 1e-6)
+            # PCA via SVD (more stable than eig)
+            try:
+                U, S, Vt = np.linalg.svd(centered.T @ centered)
+                # Smallest singular vector is the normal
+                normal = Vt[-1]
+                normal = np.real(normal)  # Ensure real
+                normals[i] = normal / (np.linalg.norm(normal) + 1e-6)
+            except:
+                normals[i] = np.array([0, 0, 1])
         
         return normals
     
@@ -165,17 +171,19 @@ class DamageDetector:
         Returns:
             List of damage detections with classifications
         """
-        # Compute normals
-        normals = self.compute_normals(point_cloud)
+        # Compute normals (sample for speed)
+        sample_idx = np.random.choice(len(point_cloud), min(1000, len(point_cloud)), replace=False)
+        sampled_pc = point_cloud[sample_idx]
+        normals = self.compute_normals(sampled_pc, k=5)
         
         # Detect discontinuities
         discontinuities = self.detect_normal_discontinuities(normals)
         
         # Region growing
-        damage_regions = self.region_growing(point_cloud, discontinuities)
+        damage_regions = self.region_growing(sampled_pc, discontinuities)
         
         # Classify
-        classifications = self.classify_damage(damage_regions, point_cloud)
+        classifications = self.classify_damage(damage_regions, sampled_pc)
         
         return {
             'num_damage_regions': len(classifications),

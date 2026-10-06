@@ -1,139 +1,136 @@
-"""Measurement extraction from floor plans."""
-
+"""Extract measurements from point clouds."""
 import numpy as np
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from scipy.spatial import ConvexHull
 
 
-@dataclass
 class MeasurementExtractor:
-    """Extract measurements from floor plan."""
+    """Extract room measurements."""
     
-    @staticmethod
-    def compute_wall_length(wall_points: np.ndarray) -> float:
-        """Compute wall length."""
-        if len(wall_points) < 2:
-            return 0.0
+    def compute_wall_length(self, wall_points):
+        """Compute wall perimeter using convex hull.
         
-        # Project to 2D (x, y)
-        wall_2d = wall_points[:, :2]
-        
-        # Compute convex hull perimeter
-        from scipy.spatial import ConvexHull
-        try:
-            hull = ConvexHull(wall_2d)
-            length = hull.volume  # In 2D, volume is perimeter
-        except:
-            length = np.linalg.norm(np.max(wall_2d, axis=0) - np.min(wall_2d, axis=0))
-        
-        return float(length)
-    
-    @staticmethod
-    def compute_room_area(wall_points: np.ndarray) -> float:
-        """Compute room area from walls."""
+        Args:
+            wall_points: N x 3 array
+            
+        Returns:
+            Wall length in meters
+        """
         if len(wall_points) < 3:
             return 0.0
         
         # Project to 2D
         wall_2d = wall_points[:, :2]
         
-        # Compute convex hull area
-        from scipy.spatial import ConvexHull
         try:
             hull = ConvexHull(wall_2d)
-            area = hull.area
+            
+            # Compute actual perimeter
+            hull_points = wall_2d[hull.vertices]
+            perimeter = 0.0
+            for i in range(len(hull_points)):
+                p1 = hull_points[i]
+                p2 = hull_points[(i + 1) % len(hull_points)]
+                perimeter += np.linalg.norm(p2 - p1)
+            
+            return perimeter
         except:
-            x_range = np.max(wall_2d[:, 0]) - np.min(wall_2d[:, 0])
-            y_range = np.max(wall_2d[:, 1]) - np.min(wall_2d[:, 1])
-            area = x_range * y_range
-        
-        return float(area)
+            return 0.0
     
-    @staticmethod
-    def compute_ceiling_height(wall_points: np.ndarray) -> Tuple[float, float]:
-        """
-        Compute ceiling height and variance.
-        
-        Returns:
-            (median_height, std_dev)
-        """
-        if len(wall_points) == 0:
-            return 0.0, 0.0
-        
-        z_values = wall_points[:, 2]
-        
-        # Use 90th percentile to ignore noise
-        height = np.percentile(z_values, 90)
-        std_dev = np.std(z_values)
-        
-        return float(height), float(std_dev)
-    
-    @staticmethod
-    def compute_opening_dimensions(opening: dict) -> dict:
-        """Compute opening dimensions."""
-        opening_dims = {
-            'width': opening.get('width', 0.0),
-            'type': opening.get('type', 'unknown'),
-            'position': opening.get('position'),
-        }
-        return opening_dims
-    
-    @staticmethod
-    def extract_measurements(floor_plan: dict, point_cloud: np.ndarray) -> dict:
-        """
-        Extract all measurements.
+    def compute_room_area(self, floor_points):
+        """Compute room area from floor points.
         
         Args:
-            floor_plan: Floor plan dict
-            point_cloud: (N, 3) point cloud
-        
-        Returns:
-            Measurements dict
-        """
-        measurements = {
-            'walls': [],
-            'room_area': 0.0,
-            'ceiling_height': 0.0,
-            'ceiling_height_std': 0.0,
-            'openings': [],
-        }
-        
-        # Extract wall measurements
-        for wall in floor_plan.get('walls', []):
-            length = MeasurementExtractor.compute_wall_length(wall)
-            measurements['walls'].append({
-                'length': length,
-                'num_points': len(wall),
-            })
-        
-        # Extract room area
-        if floor_plan.get('walls'):
-            all_wall_points = np.vstack(floor_plan['walls'])
-            measurements['room_area'] = MeasurementExtractor.compute_room_area(all_wall_points)
+            floor_points: N x 3 array
             
-            # Extract ceiling height
-            height, std = MeasurementExtractor.compute_ceiling_height(all_wall_points)
-            measurements['ceiling_height'] = height
-            measurements['ceiling_height_std'] = std
-        
-        # Extract opening measurements
-        for opening in floor_plan.get('openings', []):
-            measurements['openings'].append(
-                MeasurementExtractor.compute_opening_dimensions(opening)
-            )
-        
-        return measurements
-    
-    @staticmethod
-    def compute_confidence_interval(measurements: np.ndarray) -> Tuple[float, float, float]:
-        """
-        Compute measurement confidence interval.
-        
         Returns:
-            (mean, lower_95%, upper_95%)
+            Room area in square meters
         """
+        if len(floor_points) < 3:
+            return 0.0
+        
+        # Project to 2D
+        floor_2d = floor_points[:, :2]
+        
+        try:
+            hull = ConvexHull(floor_2d)
+            return hull.volume  # In 2D, volume is area
+        except:
+            return 0.0
+    
+    def compute_ceiling_height(self, wall_points, floor_z=None):
+        """Compute ceiling height (90th percentile of wall heights).
+        
+        Args:
+            wall_points: N x 3 array
+            floor_z: Floor z-level (auto-detected if None)
+            
+        Returns:
+            Ceiling height in meters
+        """
+        if len(wall_points) < 10:
+            return 0.0
+        
+        if floor_z is None:
+            floor_z = np.min(wall_points[:, 2])
+        
+        # Height above floor
+        heights = wall_points[:, 2] - floor_z
+        
+        # 90th percentile (robust to outliers)
+        ceiling_height = np.percentile(heights, 90)
+        
+        return ceiling_height
+    
+    def compute_confidence_interval(self, measurements, confidence=0.95):
+        """Compute confidence interval for measurements.
+        
+        Args:
+            measurements: Array of measurements
+            confidence: Confidence level (0.95 = 95%)
+            
+        Returns:
+            Dict with mean, std, ci_lower, ci_upper
+        """
+        if len(measurements) < 2:
+            return {
+                'mean': measurements[0] if len(measurements) > 0 else 0.0,
+                'std': 0.0,
+                'ci_lower': measurements[0] if len(measurements) > 0 else 0.0,
+                'ci_upper': measurements[0] if len(measurements) > 0 else 0.0
+            }
+        
         mean = np.mean(measurements)
         std = np.std(measurements)
-        margin = 1.96 * std / np.sqrt(len(measurements))
         
-        return float(mean), float(mean - margin), float(mean + margin)
+        # 95% CI for normal distribution: mean ± 1.96*std/sqrt(n)
+        z = 1.96 if confidence == 0.95 else 2.576
+        ci_margin = z * std / np.sqrt(len(measurements))
+        
+        return {
+            'mean': mean,
+            'std': std,
+            'ci_lower': mean - ci_margin,
+            'ci_upper': mean + ci_margin,
+            'confidence': confidence
+        }
+    
+    def extract_measurements(self, floor_points, wall_points):
+        """Extract all measurements.
+        
+        Args:
+            floor_points: Floor point cloud
+            wall_points: Wall point cloud
+            
+        Returns:
+            Dict with all measurements
+        """
+        floor_z = np.min(floor_points[:, 2]) if len(floor_points) > 0 else 0.0
+        
+        measurements = {
+            'wall_length': self.compute_wall_length(wall_points),
+            'room_area': self.compute_room_area(floor_points),
+            'ceiling_height': self.compute_ceiling_height(wall_points, floor_z),
+            'floor_z': floor_z
+        }
+        
+        return measurements

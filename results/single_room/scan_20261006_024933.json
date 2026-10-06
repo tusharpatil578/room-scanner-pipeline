@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "scan_id": "scan_20261006_024933",
+    "timestamp": "2026-10-06T02:49:33.192286",
+    "version": "1.0"
+  },
+  "geometry": {
+    "floor_plan": {
+      "num_openings": 0,
+      "opening_details": []
+    },
+    "measurements": {
+      "wall_length_m": 0.0,
+      "room_area_m2": 1237.7924999999998,
+      "ceiling_height_m": 0.0,
+      "floor_z_m": 255.0
+    }
+  },
+  "damage": {
+    "num_regions": 0,
+    "discontinuity_count": 0,
+    "detections": []
+  },
+  "scope": {
+    "total_cost_usd": 199853.97704999996,
+    "item_count": 1,
+    "items": [
+      {
+        "type": "paint",
+        "quantity": 13323.598469999997,
+        "unit": "sq ft",
+        "cost_per_unit": 15.0,
+        "total_cost": 199853.97704999996
+      }
+    ]
+  },
+  "registration": {
+    "final_error_m": 0.0,
+    "num_iterations": 2,
+    "passes_1cm_gate": true
+  }
+}

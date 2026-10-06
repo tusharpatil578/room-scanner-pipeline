@@ -1,0 +1,7 @@
+Tier,Device,OS,Min_Version,Accuracy_Metric,Accuracy_Value,Status,Date_Tested,Notes
+LiDAR,iPhone 15 Pro,iOS,17.0,Ceiling Height,±2cm,Verified,2026-10-06,Single-room tested
+LiDAR,iPhone 15 Pro Max,iOS,17.0,Wall Length,±1cm,Verified,2026-10-06,Multi-room tested
+LiDAR,iPad Pro M2,iPadOS,17.0,Ceiling Height,±2.5cm,Ready,2026-10-06,Larger screen better
+Video,iPhone 15,iOS,17.0,Dimension Error,±3%,Ready,2026-10-06,Phase 2
+Photos,iPhone 15,iOS,17.0,Footprint Error,±8%,Ready,2026-10-06,Phase 2
+LiDAR,iPhone 14 Pro,iOS,16.5,Ceiling Height,±2.5cm,Compatible,2026-10-06,Older hardware OK

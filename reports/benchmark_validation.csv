@@ -1,0 +1,4 @@
+dataset,timestamp,frames,registration_error_m,registration_error_cm,room_area_m2,wall_length_m,ceiling_height_m,gates_passed,gates_total,gates_score_pct,damage_regions,scope_cost
+single_room,2026-10-06T03:01:08.792819,1715,0.0,0.0,1237.7924999999998,0.0,0.0,5,5,100.0,0,199853.97704999996
+single_scan_floor_only,2026-10-06T03:01:09.692835,5251,0.011883522009619576,1.1883522009619576,4.908800000000011,142.28000000000003,1.0,4,5,80.0,0,792.5748480000017
+single_scan_with_ceiling,2026-10-06T03:01:10.618830,9745,0.0,0.0,1235.3562000000004,0.0,0.0,5,5,100.0,0,199460.61205200004

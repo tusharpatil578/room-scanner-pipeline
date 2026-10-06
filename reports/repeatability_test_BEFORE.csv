@@ -1,0 +1,4 @@
+dataset,run_1_area,run_1_perimeter,run_1_ceiling,run_2_area,run_2_perimeter,run_2_ceiling,area_diff_m2,perimeter_diff_m,ceiling_diff_cm,passes_gate_3
+single_room,1237.7924999999998,0.0,0.0,1237.7924999999998,0.0,0.0,0.0,0.0,0.0,True
+single_scan_floor_only,4.908800000000011,142.28000000000003,1.0,1239.1128000000006,0.0,0.0,1234.2040000000006,142.28000000000003,100.0,False
+single_scan_with_ceiling,1235.3562000000004,0.0,0.0,1235.3562000000004,0.0,0.0,0.0,0.0,0.0,True

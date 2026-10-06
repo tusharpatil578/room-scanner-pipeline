@@ -1,0 +1,9 @@
+measurement,value_m,method
+room_area,12.0,synthetic
+wall_length_1,4.0,synthetic
+wall_length_2,4.0,synthetic
+wall_length_3,3.0,synthetic
+wall_length_4,3.0,synthetic
+ceiling_height,2.7,synthetic
+door_width,1.0,synthetic
+door_height,2.1,synthetic
